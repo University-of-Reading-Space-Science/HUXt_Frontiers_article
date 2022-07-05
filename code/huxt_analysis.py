@@ -525,7 +525,7 @@ def plot_earth_timeseries(model, plot_omni=True):
 
 
 @u.quantity_input(time=u.day)
-def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag=''):
+def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, fighandle=np.NaN, axhandle=np.NaN, save=False, tag=''):
     """
     Make a contour plot on polar axis of a radial-latitudinal plane of the solar wind solution at a fixed time and
     longitude.
@@ -571,15 +571,18 @@ def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag='')
     mymap.set_under([0, 0, 0])
     levels = np.arange(plotvmin, plotvmax + dv, dv)
 
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={"projection": "polar"})
+    if isinstance(fighandle, float):
+        fig, ax = plt.subplots(figsize=(10, 10), subplot_kw={"projection": "polar"})
+    else:
+        fig = fighandle
+        ax = axhandle
+
     cnt = ax.contourf(model3d.lat.to(u.rad), model.r, mercut, levels=levels, cmap=mymap, extend='both')
 
     # Set edge color of contours the same, for good rendering in PDFs
     for c in cnt.collections:
         c.set_edgecolor("face")
-             
-     
-        
+
     # Trace the CME boundaries
     cme_colors = ['r', 'c', 'm', 'y', 'deeppink', 'darkorange']
     for n in range(0, len(model.cmes)):
@@ -595,17 +598,15 @@ def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag='')
             cme_r_front[ilat] = model.cme_particles_r[n,id_t,0,id_lon]
             cme_r_back[ilat] = model.cme_particles_r[n,id_t,1,id_lon]
         
-            #ax.plot(model.latitude.to(u.rad), (r_front*u.km).to(u.solRad), 'o', color=cme_colors[n], linewidth=3)
-            #ax.plot(model.latitude.to(u.rad), (r_back*u.km).to(u.solRad), 'o', color=cme_colors[n], linewidth=3)
-        #trim the nans
+
+        # trim the nans
         # Find indices that sort the longitudes, to make a wraparound of lons
         id_sort_inc = np.argsort(lats)
         id_sort_dec = np.flipud(id_sort_inc)
         
         cme_r_front = cme_r_front[id_sort_inc]
         cme_r_back = cme_r_back[id_sort_dec]
-        
-        
+
         lat_front = lats[id_sort_inc]
         lat_back = lats[id_sort_dec]
         
@@ -625,31 +626,28 @@ def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag='')
         
             ax.plot(lats.to(u.rad), (cme_r*u.km).to(u.solRad), color=cme_colors[n], linewidth=3)
 
-
     # determine which bodies should be plotted
-    plot_observers = zip(['EARTH', 'VENUS', 'MERCURY', 'STA', 'STB'],
-                         ['ko', 'mo', 'co', 'rs', 'y^'])
-    if model.r[0] > 200 *u.solRad:
-        plot_observers = zip(['EARTH', 'MARS', 'JUPITER', 'SATURN'],
-                             ['ko', 'mo', 'ro', 'cs'])
-    
-    # Add on observers 
-    for body, style in plot_observers:
+    planet_list = ['MERCURY', 'VENUS', 'EARTH', 'MARS', 'JUPITER', 'SATURN']
+    planet_cols = ['black', 'tan', 'c', 'r', 'orange', 'm']
+
+    # Add on observers
+    for body, style in zip(planet_list, planet_cols):
         obs = model.get_observer(body)
-        deltalon = 0.0*u.rad
-        
-        #adjust body longitude for the frame
+        # adjust body longitude for the frame
+        deltalon = 0 * u.rad
         if model.frame == 'sidereal':
             earth_pos = model.get_observer('EARTH')
-            deltalon = earth_pos.lon_hae[id_t] - earth_pos.lon_hae[0]  
-        bodylon = H._zerototwopi_(obs.lon[id_t] + deltalon)*u.rad
-        #plot bodies that are close to being in the plane
-        if abs(bodylon - lon_out) < model.dlon *2:
-            ax.plot(obs.lat[id_t], obs.r[id_t], style, markersize=16, label=body)
-    
+            deltalon = earth_pos.lon_hae[id_t] - earth_pos.lon_hae[0]
+
+        bodylon = H._zerototwopi_(obs.lon[id_t] + deltalon) * u.rad
+        # plot bodies that are close to being in the plane
+        if abs(bodylon - lon_out) < model.dlon * 2:
+            ax.plot(obs.lat[id_t], obs.r[id_t], 'o', color=style, markersize=16, label=body)
+
     # Add on a legend.
-    fig.legend(ncol=5, loc='lower center', frameon=False, handletextpad=0.2, columnspacing=1.0)
-    
+    ax.legend(bbox_to_anchor=(0.5, -0.15), loc="center", ncol=3, frameon=False, handletextpad=0.0,
+              columnspacing=0.0)
+
     ax.patch.set_facecolor('slategrey')
     fig.subplots_adjust(left=0.05, bottom=0.16, right=0.95, top=0.99)
          
@@ -658,7 +656,6 @@ def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag='')
     ax.set_xticklabels([])
     ax.patch.set_facecolor('slategrey')
     fig.subplots_adjust(left=0.05, bottom=0.16, right=0.95, top=0.99)
-
 
     # Add color bar
     pos = ax.get_position()
@@ -675,10 +672,10 @@ def plot3d_radial_lat_slice(model3d, time, lon=np.NaN*u.deg, save=False, tag='')
     # Add label
     label = "   Time: {:3.2f} days".format(model.time_out[id_t].to(u.day).value)
     label = label + '\n ' + (model.time_init + time).strftime('%Y-%m-%d %H:%M')
-    fig.text(0.70, pos.y0, label, fontsize=16)
+    ax.text(0.725, 0.0, label, fontsize=16, transform=ax.transAxes)
     
     label = "HUXt3D \nLong: {:3.1f} deg".format(lon_out.to(u.deg).value)
-    fig.text(0.175, pos.y0, label, fontsize=16)
+    ax.text(0.1, 0.0, label, fontsize=16, transform=ax.transAxes)
 
     if save:
         cr_num = np.int32(model.cr_num.value)
